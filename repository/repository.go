@@ -15,6 +15,27 @@ func GetDatabaseByType(db Database) int {
 	return int(db)
 }
 
+func databaseToString(db Database) string {
+	switch db {
+	case APPL_DB:
+		return "0"
+	case ASIC_DB:
+		return "1"
+	case COUNTERS_DB:
+		return "2"
+	case LOGLEVEL_DB:
+		return "3"
+	case CONFIG_DB:
+		return "4"
+	case PFC_WD_DB:
+		return "5"
+	case STATE_DB:
+		return "6"
+	default:
+		return "Unknown"
+	}
+}
+
 /*
 Repository for interacting with Redis.
 
@@ -72,23 +93,68 @@ func (r *RedisRepository) SetRedisDatabaseConnecion(database Database) {
 }
 
 // Log all keys in target database
-func (r *RedisRepository) DisplayAllKeys(database Database) {
+func (r *RedisRepository) GetAllKeys(database Database) ([]string, error) {
 	r.SetRedisDatabaseConnecion(database)
 	keys, err := r.clientMap[database].Keys(r.ctx, "*").Result()
 	if err != nil {
 		r.logger.Fatalw("Error fetching keys from Redis: %v", err)
-		return
+		return []string{}, err
 	}
-	r.logger.Infow("Keys in Redis:")
+	r.logger.Info("Keys in Redis database number ", database)
+	return keys, nil
+}
+
+// Log all keys in target database
+func (r *RedisRepository) DisplayAllKeys(database Database) {
+	keys, err := r.GetAllKeys(database)
+	if err != nil {
+		r.logger.Error(err)
+	}
 	for _, key := range keys {
-		if strings.Contains(key, "LOGGER") {
-			continue
-		} else if strings.Contains(key, "BUFFER") {
-			continue
-		} else {
-			r.logger.Infow(key)
-		}
+		r.logger.Infow(key)
 	}
+}
+
+/*
+Example function that sbscribes a Redis client to a pattern and then continously
+logs this.
+*/
+func (r *RedisRepository) SubDebugLogger(database Database) {
+
+	var builder strings.Builder
+	builder.WriteString("__keyspace@")
+	builder.WriteString(databaseToString(database))
+	builder.WriteString("*__:*")
+	redis_subscription_pattern := builder.String()
+	fmt.Println(redis_subscription_pattern)
+	// Subscribtion client:
+	pubsub := r.clientMap[database].PSubscribe(r.ctx, redis_subscription_pattern)
+	defer pubsub.Close()
+
+	// Wait for confirmation that subscription is created
+	_, err := pubsub.Receive(r.ctx)
+	if err != nil {
+		r.logger.Fatal(err)
+
+	}
+
+	// Start listening for messages
+	ch := pubsub.Channel()
+
+	fmt.Println("Listening for Redis changes...")
+
+	// Continuously read messages from the channel
+	for msg := range ch {
+		r.logger.Info("Channel: %s, Message: %s, Pattern: %s\n", msg.Channel, msg.Payload, msg.PayloadSlice)
+	}
+}
+
+// Runs a 'HGETALL' to retrieve all fields and values of a hash stored in the given database for target key.
+// Returns a map of string keys to string values.
+func (r *RedisRepository) GetKeyValue(database Database, key string) *redis.MapStringStringCmd {
+	r.SetRedisDatabaseConnecion(database)
+	value := r.clientMap[database].HGetAll(r.ctx, key)
+	return value
 }
 
 func GetRepository() {
@@ -102,13 +168,18 @@ func GetRepository() {
 		return
 	}
 	logger.Info("Device metadata", meta_data)
-	repo.DisplayAllKeys(APPL_DB)
+
 	repo.DisplayAllKeys(CONFIG_DB)
 	result, err := repo.GetLldpLocalChassis()
-	if err!=nil{
+	if err != nil {
 		fmt.Println("ERROR")
 	}
 
 	fmt.Println(result)
+	repo.DisplayAllKeys(APPL_DB)
+	repo.DisplayAllKeys(STATE_DB)
+	getKeyValueResult := repo.GetKeyValue(CONFIG_DB, "PORT|Ethernet0")
+	fmt.Println(getKeyValueResult)
 
+	repo.SubDebugLogger(CONFIG_DB)
 }
