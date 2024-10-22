@@ -4,13 +4,14 @@ type Database int
 
 // Use GetDatabaseByType to select the database in a type-safe way
 const (
-	APPL_DB     Database = iota
-	ASIC_DB     Database = iota
-	COUNTERS_DB Database = iota
-	LOGLEVEL_DB Database = iota
-	CONFIG_DB   Database = iota
-	PFC_WD_DB   Database = iota
-	STATE_DB    Database = iota
+	APPL_DB         Database = iota
+	ASIC_DB         Database = iota
+	COUNTERS_DB     Database = iota
+	LOGLEVEL_DB     Database = iota
+	CONFIG_DB       Database = iota
+	PFC_WD_DB       Database = iota
+	STATE_DB        Database = iota
+	INTERNAL_AMAZON Database = iota
 )
 
 type DeviceMetadata struct {

@@ -31,6 +31,8 @@ func databaseToString(db Database) string {
 		return "5"
 	case STATE_DB:
 		return "6"
+	case INTERNAL_AMAZON:
+		return "7"
 	default:
 		return "Unknown"
 	}
@@ -115,6 +117,46 @@ func (r *RedisRepository) DisplayAllKeys(database Database) {
 	}
 }
 
+// Log all keys and values in target database
+func (r *RedisRepository) DisplayAllKeysAndValues(database Database) {
+	keys, err := r.GetAllKeys(database)
+	if err != nil {
+		r.logger.Error(err)
+	}
+	for _, key := range keys {
+		r.logger.Infow("key: " + key)
+		keyType, _ := r.clientMap[database].Type(r.ctx, key).Result()
+		r.logger.Infow("key-type: " + keyType)
+		switch keyType {
+		case "set":
+			setValue, err := r.clientMap[database].SMembers(r.ctx, key).Result()
+			if err != nil {
+				r.logger.Error("error processing :"+key, err)
+				return
+			}
+			for _, member := range setValue {
+				r.logger.Infow("\t" + member)
+			}
+
+		case "hash":
+			mapValue, err := r.clientMap[database].HGetAll(r.ctx, key).Result()
+			if err != nil {
+				r.logger.Error("error processing :"+key, err)
+				return
+			}
+			for retrievedKey, retrievedValue := range mapValue {
+				r.logger.Infow("\t" + retrievedKey + " " + retrievedValue)
+
+			}
+		default:
+			r.logger.Error("error processing key " + key + " of type:" + keyType)
+			return
+
+		}
+
+	}
+}
+
 /*
 Example function that sbscribes a Redis client to a pattern and then continously
 logs this.
@@ -181,5 +223,7 @@ func GetRepository() {
 	getKeyValueResult := repo.GetKeyValue(CONFIG_DB, "PORT|Ethernet0")
 	fmt.Println(getKeyValueResult)
 
-	repo.SubDebugLogger(CONFIG_DB)
+	//repo.SubDebugLogger(CONFIG_DB)
+	repo.DisplayAllKeys(INTERNAL_AMAZON)
+	repo.DisplayAllKeysAndValues(APPL_DB)
 }
